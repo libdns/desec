@@ -169,7 +169,6 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 			Value:    r.Value,
 			TTL:      time.Duration(rrset.TTL) * time.Second,
 			Priority: r.Priority,
-			Weight:   r.Weight,
 		})
 
 		// Mark this key as dirty, only dirty keys will result in an update.
@@ -352,27 +351,19 @@ func rrSetSubname(r libdns.Record) string {
 //
 // libdns provides priority and weight for DNS entries that support it, the list is
 // documented in the libdns.Record documentation.
-func libdnsValue(rrs rrSet, i int) (prio, weight uint, value string, err error) {
+func libdnsValue(rrs rrSet, i int) (prio uint, value string, err error) {
 	v := rrs.Records[i]
 	var uints []uint
 	switch rrs.Type {
 	default:
 		value = v
-	case "HTTPS", "MX":
+	case "HTTPS", "MX", "SRV", "URI":
 		uints, value, err = splitUints(v, 1)
 		if err != nil {
 			err = fmt.Errorf("desec: parsing %v record value %q: %v", rrs.Type, v, err)
 			return
 		}
 		prio = uints[0]
-	case "SRV", "URI":
-		uints, value, err = splitUints(v, 2)
-		if err != nil {
-			err = fmt.Errorf("desec: parsing %v record value %q: %v", rrs.Type, v, err)
-			return
-		}
-		prio = uints[0]
-		weight = uints[1]
 	}
 	return
 }
@@ -402,10 +393,8 @@ func rrSetRecord(r libdns.Record) string {
 	switch r.Type {
 	default:
 		v = r.Value
-	case "HTTPS", "MX":
+	case "HTTPS", "MX", "SRV", "URI":
 		v = fmt.Sprintf("%d %s", r.Priority, r.Value)
-	case "SRV", "URI":
-		v = fmt.Sprintf("%d %d %s", r.Priority, r.Weight, r.Value)
 	}
 	return v
 }
@@ -416,7 +405,7 @@ func libdnsRecords(rrs rrSet) ([]libdns.Record, error) {
 	name := libdnsName(rrs)
 	ttl := time.Duration(rrs.TTL) * time.Second
 	for i := range rrs.Records {
-		prio, weight, value, err := libdnsValue(rrs, i)
+		prio, value, err := libdnsValue(rrs, i)
 		if err != nil {
 			return nil, err
 		}
@@ -426,8 +415,7 @@ func libdnsRecords(rrs rrSet) ([]libdns.Record, error) {
 			Name:     name,
 			Value:    value,
 			TTL:      ttl,
-			Priority: prio,
-			Weight:   weight,
+			Priority: int(prio),
 		})
 	}
 	return records, nil

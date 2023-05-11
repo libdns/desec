@@ -46,9 +46,6 @@ var sortRecords = cmpopts.SortSlices(func(x, y libdns.Record) bool {
 	if x.Priority != y.Priority {
 		return x.Priority < y.Priority
 	}
-	if x.Weight != y.Weight {
-		return x.Weight < y.Weight
-	}
 	return false
 })
 
@@ -249,18 +246,16 @@ func TestGetRecords(t *testing.T) {
 		{
 			Type:     "SRV",
 			Name:     "_sip._tcp",
-			Value:    `5061 sip.example.com.`,
+			Value:    `100 5061 sip.example.com.`,
 			TTL:      3600 * time.Second,
 			Priority: 1,
-			Weight:   100,
 		},
 		{
 			Type:     "URI",
 			Name:     "_ftp._tcp",
-			Value:    `"ftp://example.com/arst"`,
+			Value:    `2 "ftp://example.com/arst"`,
 			TTL:      3600 * time.Second,
 			Priority: 1,
-			Weight:   2,
 		},
 	}
 
@@ -337,18 +332,16 @@ func TestSetRecords(t *testing.T) {
 		{
 			Type:     "SRV",
 			Name:     "_sip._tcp",
-			Value:    `5061 sip.example.com.`,
+			Value:    `100 5061 sip.example.com.`,
 			TTL:      3600 * time.Second,
 			Priority: 1,
-			Weight:   100,
 		},
 		{
 			Type:     "URI",
 			Name:     "_ftp._tcp",
-			Value:    `"ftp://example.com/arst"`,
+			Value:    `2 "ftp://example.com/arst"`,
 			TTL:      3600 * time.Second,
 			Priority: 1,
-			Weight:   2,
 		},
 	}
 
