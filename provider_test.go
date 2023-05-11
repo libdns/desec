@@ -210,7 +210,7 @@ func TestGetRecords(t *testing.T) {
 		{
 			Type:  "TXT",
 			Name:  "@",
-			Value: `"hello dns!"`,
+			Value: `hello dns!`,
 			TTL:   time.Second * 3600,
 		},
 		{
@@ -264,7 +264,7 @@ func TestGetRecords(t *testing.T) {
 		},
 	}
 
-	got, err := p.GetRecords(ctx, *domain)
+	got, err := p.GetRecords(ctx, *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestSetRecords(t *testing.T) {
 		{
 			Type:  "TXT",
 			Name:  "@",
-			Value: `"hello dns!"`,
+			Value: `hello dns!`,
 			TTL:   time.Second * 3600,
 		},
 		{
@@ -352,7 +352,7 @@ func TestSetRecords(t *testing.T) {
 		},
 	}
 
-	created, err := p.SetRecords(ctx, *domain, records)
+	created, err := p.SetRecords(ctx, *domain+".", records)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestSetRecords(t *testing.T) {
 		{
 			Type:  "TXT",
 			Name:  "@",
-			Value: `"hello dns!"`,
+			Value: `hello dns!`,
 			TTL:   time.Second * 3600,
 		},
 		{
@@ -388,7 +388,7 @@ func TestSetRecords(t *testing.T) {
 		t.Fatalf("p.SetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 
-	got, err := p.GetRecords(ctx, *domain)
+	got, err := p.GetRecords(ctx, *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +417,7 @@ func TestAppendRecords(t *testing.T) {
 		{
 			Type:  "TXT",
 			Name:  "@",
-			Value: `"hello dns!"`,
+			Value: `hello dns!`,
 			TTL:   time.Second * 3600,
 		},
 		{
@@ -428,7 +428,7 @@ func TestAppendRecords(t *testing.T) {
 		},
 	}
 
-	added, err := p.AppendRecords(ctx, *domain, append)
+	added, err := p.AppendRecords(ctx, *domain+".", append)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +451,7 @@ func TestAppendRecords(t *testing.T) {
 		t.Fatalf("p.SetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 
-	got, err := p.GetRecords(ctx, *domain)
+	got, err := p.GetRecords(ctx, *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +466,7 @@ func TestAppendRecords(t *testing.T) {
 		{
 			Type:  "TXT",
 			Name:  "@",
-			Value: `"hello dns!"`,
+			Value: `hello dns!`,
 			TTL:   time.Second * 3600,
 		},
 		{
@@ -507,12 +507,12 @@ func TestDeleteRecords(t *testing.T) {
 		{
 			Type:  "TXT",
 			Name:  "@",
-			Value: `"hello dns!"`,
+			Value: `hello dns!`,
 			TTL:   time.Second * 3600,
 		},
 	}
 
-	deleted, err := p.DeleteRecords(ctx, *domain, delete)
+	deleted, err := p.DeleteRecords(ctx, *domain+".", delete)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +521,7 @@ func TestDeleteRecords(t *testing.T) {
 		{
 			Type:  "TXT",
 			Name:  "@",
-			Value: `"hello dns!"`,
+			Value: `hello dns!`,
 			TTL:   time.Second * 3600,
 		},
 	}
@@ -529,7 +529,7 @@ func TestDeleteRecords(t *testing.T) {
 		t.Fatalf("p.SetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 
-	got, err := p.GetRecords(ctx, *domain)
+	got, err := p.GetRecords(ctx, *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}

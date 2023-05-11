@@ -52,6 +52,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/libdns/libdns"
 	"golang.org/x/exp/slices"
@@ -140,7 +141,7 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 				Subname: key.Subname,
 				Type:    key.Type,
 				Records: nil,
-				TTL:     int(r.TTL / time.Second),
+				TTL:     rrSetTTL(r),
 			}
 		case err != nil:
 			return nil, fmt.Errorf("retrieving RRSet: %v", err)
@@ -167,7 +168,7 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 			Name:     r.Name,
 			Type:     r.Type,
 			Value:    r.Value,
-			TTL:      time.Duration(rrset.TTL) * time.Second,
+			TTL:      libdnsTTL(*rrset),
 			Priority: r.Priority,
 			Weight:   r.Weight,
 		})
@@ -208,7 +209,7 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 				Subname: key.Subname,
 				Type:    key.Type,
 				Records: nil,
-				TTL:     int(r.TTL / time.Second),
+				TTL:     rrSetTTL(r),
 			}
 			rrsets[key] = rrset
 		}
@@ -348,6 +349,23 @@ func rrSetSubname(r libdns.Record) string {
 	return r.Name
 }
 
+// libdnsTTL returns a valid libdns.Record.TTL value.
+func libdnsTTL(rrs rrSet) time.Duration {
+	return time.Duration(rrs.TTL) * time.Second
+}
+
+// rrSetTTL returns a valid rrSetTTL value for the given record.
+//
+// deSEC has a minimum TTL of 3600 seconds, if the record TTL
+// is shorter than 3600 seconds, 3600 seconds is returned.
+func rrSetTTL(r libdns.Record) int {
+	ttl := int(r.TTL / time.Second)
+	if ttl < 3600 {
+		return 3600
+	}
+	return ttl
+}
+
 // libdnsValue returns the value of the i-th record in libdns conventions
 //
 // libdns provides priority and weight for DNS entries that support it, the list is
@@ -373,6 +391,30 @@ func libdnsValue(rrs rrSet, i int) (prio, weight uint, value string, err error) 
 		}
 		prio = uints[0]
 		weight = uints[1]
+	case "TXT":
+		if len(v) < 2 || v[0] != '"' || v[len(v)-1] != '"' {
+			err = fmt.Errorf("parsing %v record value %q: not in quotes", rrs.Type, v)
+			return
+		}
+		// deSEC requires custom quoting for TXT records
+		var sb strings.Builder
+		for i := 1; i < len(v)-1; {
+			t, sz := utf8.DecodeRuneInString(v[i:])
+			switch t {
+			case '\\':
+				i += sz
+				t, sz = utf8.DecodeRuneInString(v[i:])
+				if t != '\\' && t != '"' {
+					err = fmt.Errorf("parsing %v record value %q: invalid escape sequence", rrs.Type, v)
+					return
+				}
+				sb.WriteRune(t)
+			default:
+				sb.WriteRune(t)
+			}
+			i += sz
+		}
+		value = sb.String()
 	}
 	return
 }
@@ -406,6 +448,22 @@ func rrSetRecord(r libdns.Record) string {
 		v = fmt.Sprintf("%d %s", r.Priority, r.Value)
 	case "SRV", "URI":
 		v = fmt.Sprintf("%d %d %s", r.Priority, r.Weight, r.Value)
+	case "TXT":
+		// deSEC requires custom quoting for TXT records
+		var sb strings.Builder
+		sb.WriteRune('"')
+		for _, t := range r.Value {
+			switch t {
+			case '\\':
+				sb.WriteString("\\\\")
+			case '"':
+				sb.WriteString("\\\"")
+			default:
+				sb.WriteRune(t)
+			}
+		}
+		sb.WriteRune('"')
+		v = sb.String()
 	}
 	return v
 }
@@ -414,7 +472,7 @@ func rrSetRecord(r libdns.Record) string {
 func libdnsRecords(rrs rrSet) ([]libdns.Record, error) {
 	records := make([]libdns.Record, 0, len(rrs.Records))
 	name := libdnsName(rrs)
-	ttl := time.Duration(rrs.TTL) * time.Second
+	ttl := libdnsTTL(rrs)
 	for i := range rrs.Records {
 		prio, weight, value, err := libdnsValue(rrs, i)
 		if err != nil {
@@ -506,7 +564,8 @@ func (p *Provider) getRRSet(ctx context.Context, zone string, key rrKey) (rrSet,
 	if subname == "" {
 		subname = "@"
 	}
-	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/rrsets/%s/%s", url.PathEscape(zone), url.PathEscape(subname), url.PathEscape(key.Type))
+	domain := url.PathEscape(strings.TrimSuffix(zone, "."))
+	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/rrsets/%s/%s", domain, url.PathEscape(subname), url.PathEscape(key.Type))
 	outb, err := p.httpDo(ctx, "GET", url, nil)
 	if err != nil {
 		if status, ok := err.(*statusError); ok {
@@ -524,9 +583,10 @@ func (p *Provider) getRRSet(ctx context.Context, zone string, key rrKey) (rrSet,
 	return out, nil
 }
 
-func (p *Provider) listRRSets(ctx context.Context, zome string) ([]rrSet, error) {
+func (p *Provider) listRRSets(ctx context.Context, zone string) ([]rrSet, error) {
 	// https://desec.readthedocs.io/en/latest/dns/rrsets.html#retrieving-all-rrsets-in-a-zone
-	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/rrsets/", url.PathEscape(zome))
+	domain := url.PathEscape(strings.TrimSuffix(zone, "."))
+	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/rrsets/", domain)
 	buf, err := p.httpDo(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -545,7 +605,8 @@ func (p *Provider) putRRSets(ctx context.Context, zone string, rrs []rrSet) erro
 	}
 
 	// https://desec.readthedocs.io/en/latest/dns/rrsets.html#bulk-modification-of-rrsets
-	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/rrsets/", url.PathEscape(zone))
+	domain := url.PathEscape(strings.TrimSuffix(zone, "."))
+	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/rrsets/", domain)
 
 	var buf []byte
 	var err error
