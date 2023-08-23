@@ -199,6 +199,7 @@ func TestGetRecords(t *testing.T) {
 		{"subname": "", "type": "NS", "ttl": 3600, "records": []},
 		{"subname": "", "type": "A", "ttl": 3601, "records": ["127.0.0.3"]},
 		{"subname": "www", "type": "A", "ttl": 3600, "records": ["127.0.0.1", "127.0.0.2"]},
+		{"subname": "subsub.sub", "type": "A", "ttl": 3600, "records": ["127.0.0.4"]},
 		{"subname": "www", "type": "HTTPS", "ttl": 3600, "records": ["1 . alpn=\"h2\""]},
 		{"subname": "", "type": "MX", "ttl": 3600, "records": ["0 mx0.example.com.", "10 mx1.example.com."]},
 		{"subname": "_sip._tcp", "type": "SRV", "ttl": 3600, "records": ["1 100 5061 sip.example.com."]},
@@ -240,6 +241,12 @@ func TestGetRecords(t *testing.T) {
 			Type:  "A",
 			Name:  "www",
 			Value: `127.0.0.2`,
+			TTL:   3600 * time.Second,
+		},
+		{
+			Type:  "A",
+			Name:  "subsub.sub",
+			Value: `127.0.0.4`,
 			TTL:   3600 * time.Second,
 		},
 		{
@@ -329,6 +336,12 @@ func TestSetRecords(t *testing.T) {
 			TTL:   3600 * time.Second,
 		},
 		{
+			Type:  "A",
+			Name:  "subsub.sub",
+			Value: `127.0.0.5`,
+			TTL:   3600 * time.Second,
+		},
+		{
 			Type:     "MX",
 			Name:     "@",
 			Value:    `mx0.example.com.`,
@@ -389,6 +402,12 @@ func TestSetRecords(t *testing.T) {
 			Value: `127.0.0.2`,
 			TTL:   3600 * time.Second,
 		},
+		{
+			Type:  "A",
+			Name:  "subsub.sub",
+			Value: `127.0.0.5`,
+			TTL:   3600 * time.Second,
+		},
 	}
 	if diff := cmp.Diff(wantCreated, created, sortRecords); diff != "" {
 		t.Fatalf("p.SetRecords() unexpected diff [-want +got]: %s", diff)
@@ -432,6 +451,12 @@ func TestAppendRecords(t *testing.T) {
 			Value: `127.0.0.2`,
 			TTL:   3600 * time.Second,
 		},
+		{
+			Type:  "A",
+			Name:  "subsub.sub",
+			Value: `127.0.0.3`,
+			TTL:   3600 * time.Second,
+		},
 	}
 
 	added, err := p.AppendRecords(ctx, *domain+".", append)
@@ -450,6 +475,12 @@ func TestAppendRecords(t *testing.T) {
 			Type:  "A",
 			Name:  "www",
 			Value: `127.0.0.2`,
+			TTL:   3600 * time.Second,
+		},
+		{
+			Type:  "A",
+			Name:  "subsub.sub",
+			Value: `127.0.0.3`,
 			TTL:   3600 * time.Second,
 		},
 	}
@@ -485,6 +516,12 @@ func TestAppendRecords(t *testing.T) {
 			Type:  "A",
 			Name:  "www",
 			Value: `127.0.0.2`,
+			TTL:   3600 * time.Second,
+		},
+		{
+			Type:  "A",
+			Name:  "subsub.sub",
+			Value: `127.0.0.3`,
 			TTL:   3600 * time.Second,
 		},
 	}
