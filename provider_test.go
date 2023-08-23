@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -70,17 +71,29 @@ func httpDo(ctx context.Context, t *testing.T, method, url string, in []byte) ([
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	}
 
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
+	for {
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatal(err)
+		if res.StatusCode == http.StatusTooManyRequests {
+			retryAfterHeader := res.Header.Get("Retry-After")
+			retryAfter, err := strconv.Atoi(retryAfterHeader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Duration(retryAfter) * time.Second)
+			continue
+		}
+
+		defer res.Body.Close()
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body, res.StatusCode
 	}
-	return body, res.StatusCode
 }
 
 func putRRSets(ctx context.Context, t *testing.T, domain, content string) {
