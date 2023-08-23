@@ -181,7 +181,7 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 		update = append(update, *rrsets[key])
 	}
 	if err := p.putRRSets(ctx, zone, update); err != nil {
-		return nil, fmt.Errorf("writing RRSets: %v", err)
+		return nil, fmt.Errorf("appending RRSets to zone %q: %v", zone, err)
 	}
 	return ret, nil
 }
@@ -253,7 +253,7 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 	}
 
 	if err := p.putRRSets(ctx, zone, update); err != nil {
-		return nil, fmt.Errorf("writing RRSets: %v", err)
+		return nil, fmt.Errorf("setting RRSets for zone %q: %v", zone, err)
 	}
 	return ret, nil
 }
@@ -301,7 +301,7 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 		update = append(update, *rrsets[key])
 	}
 	if err := p.putRRSets(ctx, zone, update); err != nil {
-		return nil, fmt.Errorf("writing RRSets: %v", err)
+		return nil, fmt.Errorf("deleting RRSets in zone %q: %v", zone, err)
 	}
 	return ret, nil
 }
