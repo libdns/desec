@@ -320,8 +320,18 @@ type rrKey struct {
 	Type    string
 }
 
+func rrsetRecordsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	a1, b1 := slices.Clone(a), slices.Clone(b)
+	slices.Sort(a1)
+	slices.Sort(b1)
+	return slices.Equal(a1, b1)
+}
+
 func (rrs *rrSet) equal(other *rrSet) bool {
-	return rrs.Subname == other.Subname && rrs.Type == other.Type && rrs.TTL == other.TTL && slices.Equal(rrs.Records, other.Records)
+	return rrs.Subname == other.Subname && rrs.Type == other.Type && rrs.TTL == other.TTL && rrsetRecordsEqual(rrs.Records, other.Records)
 }
 
 // libdnsName returns the rrSet subname converted to libdns conventions.
