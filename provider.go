@@ -5,8 +5,9 @@
 //
 // The deSEC API doesn't map 1:1 to the libdns API. The main issue is that libdns works on the
 // record level while the deSEC API works on the RRset level. This makes it impossible to update
-// records atomically (in contrast with RRsets). The implementation here goes to great lengths to
-// avoid interference of multiple concurrent requests, but that only works within a single process.
+// individual records atomically, as expected by the libdns API. The implementation here goes to
+// great lengths to avoid interference of multiple concurrent requests, but that only works
+// within a single process.
 //
 // If multiple processes are modifying a deSEC zone concurrently, care must be taken that the
 // different processes operate on different [resource record sets]. Otherwise multiple concurrent
