@@ -484,8 +484,8 @@ func libdnsRecords(rrs rrSet) ([]libdns.Record, error) {
 			Name:     name,
 			Value:    value,
 			TTL:      ttl,
-			Priority: prio,
-			Weight:   weight,
+			Priority: uint(prio),
+			Weight:   uint(weight),
 		})
 	}
 	return records, nil
