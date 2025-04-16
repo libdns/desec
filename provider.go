@@ -228,12 +228,7 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 		w := rrsets[key]
 		switch {
 		case w == nil:
-			// rrset exists, but not in the input, delete it by adding it to rrsets and set
-			// records to an empty slice to represent the deletion.
-			// See https://desec.readthedocs.io/en/latest/dns/rrsets.html#deleting-an-rrset
-			w0 := g
-			w0.Records = []string{}
-			rrsets[key] = &w0
+			// rrset exists in the zone, but not in the input; leave it unchanged.
 		case g.equal(w):
 			// rrset exists and is equal to the one we want; skip it in the update.
 			delete(rrsets, key)

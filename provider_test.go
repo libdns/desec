@@ -298,6 +298,7 @@ func TestSetRecords(t *testing.T) {
 	ctx := setup(t, `[
 		{"subname": "www", "type": "A", "ttl": 3600, "records": ["127.0.1.1", "127.0.1.2"]},
 		{"subname": "", "type": "TXT", "ttl": 3600, "records": ["\"will be overridden\""]},
+		{"subname": "sub", "type": "TXT", "ttl": 3600, "records": ["\"will stay the same\""]},
 		{"subname": "www", "type": "HTTPS", "ttl": 3600, "records": ["1 . alpn=\"h2\""]},
 		{"subname": "_sip._tcp", "type": "SRV", "ttl": 3600, "records": ["1 100 5061 sip.example.com."]},
 		{"subname": "_ftp._tcp", "type": "URI", "ttl": 3600, "records": ["1 2 \"ftp://example.com/arst\""]},
@@ -420,11 +421,21 @@ func TestSetRecords(t *testing.T) {
 		t.Fatalf("p.SetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 
+	unchanged := []libdns.Record{
+		{
+			Type:  "TXT",
+			Name:  "sub",
+			Value: `will stay the same`,
+			TTL:   time.Second * 3600,
+		},
+	}
+	wantCurrent := append(records, unchanged...)
+
 	got, err := p.GetRecords(ctx, *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff(records, got, sortRecords); diff != "" {
+	if diff := cmp.Diff(wantCurrent, got, sortRecords); diff != "" {
 		t.Fatalf("p.GetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 }
