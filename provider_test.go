@@ -293,10 +293,12 @@ func TestSetRecords(t *testing.T) {
 	ctx := setup(t, `[
 		{"subname": "www", "type": "A", "ttl": 3600, "records": ["127.0.1.1", "127.0.1.2"]},
 		{"subname": "", "type": "TXT", "ttl": 3600, "records": ["\"will be overridden\""]},
+		{"subname": "sub", "type": "TXT", "ttl": 3600, "records": ["\"will stay the same\""]},
 		{"subname": "www", "type": "HTTPS", "ttl": 3600, "records": ["1 . alpn=\"h2\""]},
 		{"subname": "_sip._tcp.sub", "type": "SRV", "ttl": 3600, "records": ["1 100 5061 sip.example.com."]},
 		{"subname": "_ftp._tcp", "type": "URI", "ttl": 3600, "records": ["1 2 \"ftp://example.com/arst\""]},
-		{"subname": "", "type": "MX", "ttl": 3600, "records": ["0 mx0.example.com.", "10 mx1.example.com."]}
+		{"subname": "", "type": "MX", "ttl": 3600, "records": ["0 mx0.example.com.", "10 mx1.example.com."]},
+		{"subname": "www", "type": "NS", "ttl": 3600, "records": ["ns0.example.com.", "ns1.example.com."]}
 	]`)
 
 	p := &desec.Provider{
@@ -369,13 +371,14 @@ func TestSetRecords(t *testing.T) {
 		},
 	}
 
-	created, err := p.SetRecords(ctx, *domain+".", records)
+	recordsSet, err := p.SetRecords(ctx, *domain+".", records)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// The records that already existed are not returned by SetRecords.
-	wantCreated := []libdns.Record{
+	// All set records, including the ones that already existed, should be returned
+	// by SetRecords.
+	wantSet := []libdns.Record{
 		libdns.Address{
 			Name: "@",
 			IP:   netip.MustParseAddr("127.0.0.3"),
@@ -391,6 +394,16 @@ func TestSetRecords(t *testing.T) {
 			IP:   netip.MustParseAddr("127.0.0.1"),
 			TTL:  3600 * time.Second,
 		},
+		libdns.ServiceBinding{
+			Scheme: "https",
+			Name:   "www",
+			Target: ".",
+			Params: libdns.SvcParams{
+				"alpn": []string{"h2"},
+			},
+			Priority: 1,
+			TTL:      3600 * time.Second,
+		},
 		libdns.Address{
 			Name: "www",
 			IP:   netip.MustParseAddr("127.0.0.2"),
@@ -401,16 +414,130 @@ func TestSetRecords(t *testing.T) {
 			IP:   netip.MustParseAddr("127.0.0.5"),
 			TTL:  3600 * time.Second,
 		},
+		libdns.MX{
+			Name:       "@",
+			Target:     "mx0.example.com.",
+			TTL:        3600 * time.Second,
+			Preference: 0,
+		},
+		libdns.MX{
+			Name:       "@",
+			Target:     "mx1.example.com.",
+			TTL:        3600 * time.Second,
+			Preference: 10,
+		},
+		libdns.SRV{
+			Service:   "sip",
+			Transport: "tcp",
+			Name:      "sub",
+			Target:    "sip.example.com.",
+			TTL:       3600 * time.Second,
+			Priority:  1,
+			Weight:    100,
+			Port:      5061,
+		},
+		libdns.RR{
+			Type: "URI",
+			Name: "_ftp._tcp",
+			Data: `1 2 "ftp://example.com/arst"`,
+			TTL:  3600 * time.Second,
+		},
 	}
-	if diff := cmp.Diff(wantCreated, created, cmpRecord); diff != "" {
+
+	if diff := cmp.Diff(wantSet, recordsSet, cmpRecord); diff != "" {
 		t.Fatalf("p.SetRecords() unexpected diff [-want +got]: %s", diff)
+	}
+
+	wantCurrent := []libdns.Record{
+		// Records for (name, type) pairs which were not present in the SetRecords input
+		// should be unaffected.
+		libdns.TXT{
+			Name: "sub",
+			Text: `will stay the same`,
+			TTL:  time.Second * 3600,
+		},
+		libdns.NS{
+			Name:   "www",
+			Target: "ns0.example.com.",
+			TTL:    time.Second * 3600,
+		},
+		libdns.NS{
+			Name:   "www",
+			Target: "ns1.example.com.",
+			TTL:    time.Second * 3600,
+		},
+		// Records for (name, type) pairs which were present in the SetRecords input
+		// should match the output of SetRecords.
+		libdns.Address{
+			Name: "@",
+			IP:   netip.MustParseAddr("127.0.0.3"),
+			TTL:  time.Second * 3601,
+		},
+		libdns.TXT{
+			Name: "@",
+			Text: `hello dns!`,
+			TTL:  time.Second * 3600,
+		},
+		libdns.Address{
+			Name: "www",
+			IP:   netip.MustParseAddr("127.0.0.1"),
+			TTL:  3600 * time.Second,
+		},
+		libdns.ServiceBinding{
+			Scheme: "https",
+			Name:   "www",
+			Target: ".",
+			Params: libdns.SvcParams{
+				"alpn": []string{"h2"},
+			},
+			Priority: 1,
+			TTL:      3600 * time.Second,
+		},
+		libdns.Address{
+			Name: "www",
+			IP:   netip.MustParseAddr("127.0.0.2"),
+			TTL:  3600 * time.Second,
+		},
+		libdns.Address{
+			Name: "subsub.sub",
+			IP:   netip.MustParseAddr("127.0.0.5"),
+			TTL:  3600 * time.Second,
+		},
+		libdns.MX{
+			Name:       "@",
+			Target:     "mx0.example.com.",
+			TTL:        3600 * time.Second,
+			Preference: 0,
+		},
+		libdns.MX{
+			Name:       "@",
+			Target:     "mx1.example.com.",
+			TTL:        3600 * time.Second,
+			Preference: 10,
+		},
+		libdns.SRV{
+			Service:   "sip",
+			Transport: "tcp",
+			Name:      "sub",
+			Target:    "sip.example.com.",
+			TTL:       3600 * time.Second,
+			Priority:  1,
+			Weight:    100,
+			Port:      5061,
+		},
+		libdns.RR{
+			Type: "URI",
+			Name: "_ftp._tcp",
+			Data: `1 2 "ftp://example.com/arst"`,
+			TTL:  3600 * time.Second,
+		},
 	}
 
 	got, err := p.GetRecords(ctx, *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff(records, got, cmpRecord); diff != "" {
+	if diff := cmp.Diff(wantCurrent, got, cmpRecord); diff != "" {
 		t.Fatalf("p.GetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 }
