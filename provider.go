@@ -199,9 +199,6 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 
 // SetRecords sets the records in the zone, either by updating existing records or creating new ones.
 // It returns the updated records.
-//
-// Caveat: This method will fail if there are more than 500 RRsets in the zone. See package
-// documentation for more detail.
 func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
 	err := acquireWriteToken(ctx)
 	if err != nil {
@@ -209,12 +206,12 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 	}
 	defer releaseWriteToken()
 
-	// Build the desired state
-	rrsets := make(map[rrKey]*rrSet)
+	// Group records by rrKey (name, type)
+	rrsetMap := make(map[rrKey]*rrSet)
 	for _, r := range records {
 		rr := r.RR()
 		key := rrKey{rrSetSubname(rr), rr.Type}
-		rrset := rrsets[key]
+		rrset := rrsetMap[key]
 		if rrset == nil {
 			rrset = &rrSet{
 				Subname: key.Subname,
@@ -222,41 +219,17 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 				Records: nil,
 				TTL:     rrSetTTL(rr),
 			}
-			rrsets[key] = rrset
+			rrsetMap[key] = rrset
 		}
 		rrset.Records = append(rrset.Records, rrSetRecord(rr))
 	}
 
-	// Fetch existing rrSets and compare to desired state
-	existing, err := p.listRRSets(ctx, zone)
-	if err != nil {
-		return nil, fmt.Errorf("listing RRSets: %v", err)
-	}
-	for _, g := range existing {
-		key := rrKey{g.Subname, g.Type}
-		w := rrsets[key]
-		switch {
-		case w == nil:
-			// rrset exists, but not in the input, delete it by adding it to rrsets and set
-			// records to an empty slice to represent the deletion.
-			// See https://desec.readthedocs.io/en/latest/dns/rrsets.html#deleting-an-rrset
-			w0 := g
-			w0.Records = []string{}
-			rrsets[key] = &w0
-		case g.equal(w):
-			// rrset exists and is equal to the one we want; skip it in the update.
-			delete(rrsets, key)
-		}
-	}
-
-	// Generate updates to arrive at desired state.
-	update := make([]rrSet, 0, len(rrsets))
-	var ret []libdns.Record
-	for _, rrset := range rrsets {
-		update = append(update, *rrset)
-
-		// Add all records being set here. This ignores records that are being deleted, because
-		// those are represented as an rrset without any records.
+	// Build list of RRSets to pass to the API and list of libdns records
+	// to return from the function
+	rrsetList := make([]rrSet, 0, len(rrsetMap))
+	ret := make([]libdns.Record, 0, len(records))
+	for _, rrset := range rrsetMap {
+		rrsetList = append(rrsetList, *rrset)
 		records0, err := libdnsRecords(*rrset)
 		if err != nil {
 			return nil, fmt.Errorf("parsing RRSet: %v", err)
@@ -264,7 +237,7 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 		ret = append(ret, records0...)
 	}
 
-	if err := p.putRRSets(ctx, zone, update); err != nil {
+	if err := p.putRRSets(ctx, zone, rrsetList); err != nil {
 		return nil, fmt.Errorf("writing RRSets: %v", err)
 	}
 	return ret, nil
