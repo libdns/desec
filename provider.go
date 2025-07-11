@@ -292,6 +292,23 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 	return ret, nil
 }
 
+// ListZones lists all the zones on an account.
+func (p *Provider) ListZones(ctx context.Context) ([]libdns.Zone, error) {
+	// https://desec.readthedocs.io/en/latest/dns/domains.html#listing-domains
+	desecZones, err := p.listZones(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	zones := make([]libdns.Zone, len(desecZones))
+	for i, zone := range desecZones {
+		zones[i] = libdns.Zone{
+			Name: zone.Name,
+		}
+	}
+	return zones, nil
+}
+
 // https://desec.readthedocs.io/en/latest/dns/rrsets.html#rrset-field-reference
 type rrSet struct {
 	Subname string   `json:"subname"`
@@ -538,6 +555,25 @@ func (p *Provider) listRRSets(ctx context.Context, zone string) ([]rrSet, error)
 	return out, nil
 }
 
+// https://desec.readthedocs.io/en/latest/dns/domains.html#domain-field-reference
+type domain struct {
+	Name string `json:"name"`
+}
+
+func (p *Provider) listZones(ctx context.Context) ([]domain, error) {
+	// https://desec.readthedocs.io/en/latest/dns/domains.html#listing-domains
+	buf, err := p.httpDo(ctx, "GET", "https://desec.io/api/v1/domains/", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []domain
+	if err := json.Unmarshal(buf, &out); err != nil {
+		return nil, fmt.Errorf("decoding json: %v", err)
+	}
+	return out, nil
+}
+
 func (p *Provider) putRRSets(ctx context.Context, zone string, rrs []rrSet) error {
 	if len(rrs) == 0 {
 		return nil
@@ -567,4 +603,5 @@ var (
 	_ libdns.RecordAppender = (*Provider)(nil)
 	_ libdns.RecordSetter   = (*Provider)(nil)
 	_ libdns.RecordDeleter  = (*Provider)(nil)
+	_ libdns.ZoneLister     = (*Provider)(nil)
 )

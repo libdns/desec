@@ -693,3 +693,51 @@ func TestDeleteRecords(t *testing.T) {
 		t.Fatalf("p.GetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 }
+
+func TestListZones(t *testing.T) {
+	if *token == "" || *domain == "" {
+		t.Skip("skipping integration test; both -token and -domain must be set")
+	}
+
+	ctx := context.Background()
+	if deadline, ok := t.Deadline(); ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		t.Cleanup(cancel)
+	}
+
+	p := &desec.Provider{
+		Token: *token,
+	}
+
+	testDomains := []string{
+		*domain,
+		"test1-" + *domain,
+		"test2-" + *domain,
+	}
+
+	for _, testDomain := range testDomains {
+		if domainExists(ctx, t, testDomain) {
+			t.Fatalf("domain %q exists, but it should not", testDomain)
+		}
+		createDomain(ctx, t, testDomain)
+		domain := testDomain
+		t.Cleanup(func() { deleteDomain(ctx, t, domain) })
+	}
+
+	zones, err := p.ListZones(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	zoneMap := make(map[string]bool)
+	for _, zone := range zones {
+		zoneMap[zone.Name] = true
+	}
+
+	for _, testDomain := range testDomains {
+		if !zoneMap[testDomain] {
+			t.Errorf("Failed to find %s in ListZones call", testDomain)
+		}
+	}
+}
