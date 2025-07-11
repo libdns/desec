@@ -10,6 +10,7 @@ package desec_test
 
 import (
 	"bytes"
+	gocmp "cmp"
 	"context"
 	"encoding/json"
 	"flag"
@@ -691,5 +692,57 @@ func TestDeleteRecords(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, got, cmpRecord); diff != "" {
 		t.Fatalf("p.GetRecords() unexpected diff [-want +got]: %s", diff)
+	}
+}
+
+func TestListZones(t *testing.T) {
+	if *token == "" || *domain == "" {
+		t.Skip("skipping integration test; both -token and -domain must be set")
+	}
+
+	ctx := context.Background()
+	if deadline, ok := t.Deadline(); ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		t.Cleanup(cancel)
+	}
+
+	p := &desec.Provider{
+		Token: *token,
+	}
+
+	testDomains := map[string]bool{
+		*domain:            true,
+		"test1-" + *domain: true,
+		"test2-" + *domain: true,
+	}
+
+	for testDomain := range testDomains {
+		if domainExists(ctx, t, testDomain) {
+			t.Fatalf("domain %q exists, but it should not", testDomain)
+		}
+		createDomain(ctx, t, testDomain)
+		domain := testDomain
+		t.Cleanup(func() { deleteDomain(ctx, t, domain) })
+	}
+
+	got, err := p.ListZones(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var want []libdns.Zone
+	for domain := range testDomains {
+		want = append(want, libdns.Zone{Name: domain})
+	}
+
+	// We only control a limited number of zones in the test account, there may be preexisting zones
+	// that are unknown to us. Ignore all unknown zones.
+	opts := cmp.Options{
+		cmpopts.IgnoreSliceElements(func(zone libdns.Zone) bool { return !testDomains[zone.Name] }),
+		cmpopts.SortSlices(func(a, b libdns.Zone) int { return gocmp.Compare(a.Name, b.Name) }),
+	}
+	if diff := cmp.Diff(want, got, opts); diff != "" {
+		t.Errorf("ListZones() unexpected diff [-want +got]: %s", diff)
 	}
 }
