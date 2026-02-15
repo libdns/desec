@@ -29,6 +29,7 @@ import (
 
 	"github.com/libdns/desec"
 	"github.com/libdns/libdns"
+	"github.com/libdns/libdns/libdnstest"
 )
 
 var (
@@ -83,6 +84,7 @@ func httpDo(ctx context.Context, t *testing.T, method, url string, in []byte) ([
 			if err != nil {
 				t.Fatal(err)
 			}
+			t.Log("rate limited, retrying after", retryAfter, "seconds")
 			time.Sleep(time.Duration(retryAfter) * time.Second)
 			continue
 		}
@@ -96,11 +98,11 @@ func httpDo(ctx context.Context, t *testing.T, method, url string, in []byte) ([
 	}
 }
 
-func putRRSets(ctx context.Context, t *testing.T, domain, content string) {
+func putRRSets(t *testing.T, domain, content string) {
 	t.Helper()
 
 	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/rrsets/", url.PathEscape(domain))
-	body, status := httpDo(ctx, t, "PUT", url, []byte(content))
+	body, status := httpDo(t.Context(), t, "PUT", url, []byte(content))
 	switch status {
 	case http.StatusOK:
 		// success
@@ -110,11 +112,11 @@ func putRRSets(ctx context.Context, t *testing.T, domain, content string) {
 	}
 }
 
-func domainExists(ctx context.Context, t *testing.T, domain string) bool {
+func domainExists(t *testing.T, domain string) bool {
 	t.Helper()
 
 	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/", url.PathEscape(domain))
-	body, status := httpDo(ctx, t, "GET", url, nil)
+	body, status := httpDo(t.Context(), t, "GET", url, nil)
 	switch status {
 	case http.StatusOK:
 		return true
@@ -126,8 +128,12 @@ func domainExists(ctx context.Context, t *testing.T, domain string) bool {
 	}
 }
 
-func createDomain(ctx context.Context, t *testing.T, domain string) {
+func createDomain(t *testing.T, domain string) {
 	t.Helper()
+
+	if domainExists(t, domain) {
+		t.Fatalf("domain %q exists, but it should not", domain)
+	}
 
 	payload, err := json.Marshal(struct {
 		Name string `json:"name"`
@@ -139,7 +145,7 @@ func createDomain(ctx context.Context, t *testing.T, domain string) {
 	}
 
 	url := "https://desec.io/api/v1/domains/"
-	body, status := httpDo(ctx, t, "POST", url, payload)
+	body, status := httpDo(t.Context(), t, "POST", url, payload)
 	switch status {
 	case http.StatusCreated:
 		// success
@@ -149,8 +155,12 @@ func createDomain(ctx context.Context, t *testing.T, domain string) {
 	}
 }
 
-func deleteDomain(ctx context.Context, t *testing.T, domain string) {
+func deleteDomain(t *testing.T, domain string) {
 	t.Helper()
+
+	// deleteDomains is used to cleanup domains created in the test, it should not be affected by
+	// cancellation of the test context, so use a non-cancelable context here.
+	ctx := context.WithoutCancel(t.Context())
 
 	url := fmt.Sprintf("https://desec.io/api/v1/domains/%s/", url.PathEscape(domain))
 	body, status := httpDo(ctx, t, "DELETE", url, nil)
@@ -169,36 +179,24 @@ func deleteDomain(ctx context.Context, t *testing.T, domain string) {
 //   - create the domain and setup the deletion of the domain at the end of the test
 //   - ensure that the domain contains only the specified rrsets
 //   - returns a context that can be used in the test
-func setup(t *testing.T, rrsets string) context.Context {
+func setup(t *testing.T, rrsets string) {
 	t.Helper()
 
 	if *token == "" || *domain == "" {
 		t.Skip("skipping integration test; both -token and -domain must be set")
 	}
 
-	ctx := context.Background()
-	if deadline, ok := t.Deadline(); ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithDeadline(ctx, deadline)
-		t.Cleanup(cancel)
-	}
-
-	if domainExists(ctx, t, *domain) {
-		t.Fatalf("domain %q exists, but it must not; either the domain was created outside of this test or something in this test went wrong", *domain)
-	}
-	createDomain(ctx, t, *domain)
-	t.Cleanup(func() { deleteDomain(ctx, t, *domain) })
+	createDomain(t, *domain)
+	t.Cleanup(func() { deleteDomain(t, *domain) })
 
 	// A freshly created domain contains a default NS record. To make sure the domain only has
 	// the rrsets specified in the call to setup we need to delete them first
-	putRRSets(ctx, t, *domain, `[{"subname": "", "type": "NS", "ttl": 3600, "records": []}]`)
-	putRRSets(ctx, t, *domain, rrsets)
-
-	return ctx
+	putRRSets(t, *domain, `[{"subname": "", "type": "NS", "ttl": 3600, "records": []}]`)
+	putRRSets(t, *domain, rrsets)
 }
 
 func TestGetRecords(t *testing.T) {
-	ctx := setup(t, `[
+	setup(t, `[
 		{"subname": "", "type": "NS", "ttl": 3600, "records": []},
 		{"subname": "", "type": "A", "ttl": 3601, "records": ["127.0.0.3"]},
 		{"subname": "www", "type": "A", "ttl": 3600, "records": ["127.0.0.1", "127.0.0.2"]},
@@ -280,7 +278,7 @@ func TestGetRecords(t *testing.T) {
 		},
 	}
 
-	got, err := p.GetRecords(ctx, *domain+".")
+	got, err := p.GetRecords(t.Context(), *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +289,7 @@ func TestGetRecords(t *testing.T) {
 }
 
 func TestSetRecords(t *testing.T) {
-	ctx := setup(t, `[
+	setup(t, `[
 		{"subname": "www", "type": "A", "ttl": 3600, "records": ["127.0.1.1", "127.0.1.2"]},
 		{"subname": "", "type": "TXT", "ttl": 3600, "records": ["\"will be overridden\""]},
 		{"subname": "sub", "type": "TXT", "ttl": 3600, "records": ["\"will stay the same\""]},
@@ -372,7 +370,7 @@ func TestSetRecords(t *testing.T) {
 		},
 	}
 
-	recordsSet, err := p.SetRecords(ctx, *domain+".", records)
+	recordsSet, err := p.SetRecords(t.Context(), *domain+".", records)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +532,7 @@ func TestSetRecords(t *testing.T) {
 		},
 	}
 
-	got, err := p.GetRecords(ctx, *domain+".")
+	got, err := p.GetRecords(t.Context(), *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +542,7 @@ func TestSetRecords(t *testing.T) {
 }
 
 func TestAppendRecords(t *testing.T) {
-	ctx := setup(t, `[
+	setup(t, `[
 		{"subname": "www", "type": "A", "ttl": 3600, "records": ["127.0.0.1"]},
 		{"subname": "", "type": "TXT", "ttl": 3600, "records": ["\"hello dns!\""]}
 	]`)
@@ -576,7 +574,7 @@ func TestAppendRecords(t *testing.T) {
 		},
 	}
 
-	added, err := p.AppendRecords(ctx, *domain+".", append)
+	added, err := p.AppendRecords(t.Context(), *domain+".", append)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +600,7 @@ func TestAppendRecords(t *testing.T) {
 		t.Fatalf("p.SetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 
-	got, err := p.GetRecords(ctx, *domain+".")
+	got, err := p.GetRecords(t.Context(), *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -640,7 +638,7 @@ func TestAppendRecords(t *testing.T) {
 }
 
 func TestDeleteRecords(t *testing.T) {
-	ctx := setup(t, `[
+	setup(t, `[
 		{"subname": "www", "type": "A", "ttl": 3600, "records": ["127.0.0.1"]},
 		{"subname": "", "type": "TXT", "ttl": 3600, "records": ["\"hello dns!\""]}
 	]`)
@@ -662,7 +660,7 @@ func TestDeleteRecords(t *testing.T) {
 		},
 	}
 
-	deleted, err := p.DeleteRecords(ctx, *domain+".", delete)
+	deleted, err := p.DeleteRecords(t.Context(), *domain+".", delete)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -678,7 +676,7 @@ func TestDeleteRecords(t *testing.T) {
 		t.Fatalf("p.SetRecords() unexpected diff [-want +got]: %s", diff)
 	}
 
-	got, err := p.GetRecords(ctx, *domain+".")
+	got, err := p.GetRecords(t.Context(), *domain+".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -700,13 +698,6 @@ func TestListZones(t *testing.T) {
 		t.Skip("skipping integration test; both -token and -domain must be set")
 	}
 
-	ctx := context.Background()
-	if deadline, ok := t.Deadline(); ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithDeadline(ctx, deadline)
-		t.Cleanup(cancel)
-	}
-
 	p := &desec.Provider{
 		Token: *token,
 	}
@@ -718,31 +709,44 @@ func TestListZones(t *testing.T) {
 	}
 
 	for testDomain := range testDomains {
-		if domainExists(ctx, t, testDomain) {
-			t.Fatalf("domain %q exists, but it should not", testDomain)
-		}
-		createDomain(ctx, t, testDomain)
+		createDomain(t, testDomain)
 		domain := testDomain
-		t.Cleanup(func() { deleteDomain(ctx, t, domain) })
+		t.Cleanup(func() { deleteDomain(t, domain) })
 	}
 
-	got, err := p.ListZones(ctx)
+	got, err := p.ListZones(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var want []libdns.Zone
 	for domain := range testDomains {
-		want = append(want, libdns.Zone{Name: domain})
+		want = append(want, libdns.Zone{Name: domain + "."})
 	}
 
 	// We only control a limited number of zones in the test account, there may be preexisting zones
 	// that are unknown to us. Ignore all unknown zones.
 	opts := cmp.Options{
-		cmpopts.IgnoreSliceElements(func(zone libdns.Zone) bool { return !testDomains[zone.Name] }),
+		cmpopts.IgnoreSliceElements(func(zone libdns.Zone) bool {
+			return !testDomains[strings.TrimSuffix(zone.Name, ".")]
+		}),
 		cmpopts.SortSlices(func(a, b libdns.Zone) int { return gocmp.Compare(a.Name, b.Name) }),
 	}
 	if diff := cmp.Diff(want, got, opts); diff != "" {
 		t.Errorf("ListZones() unexpected diff [-want +got]: %s", diff)
 	}
+}
+
+func TestProvider(t *testing.T) {
+	if *token == "" || *domain == "" {
+		t.Skip("skipping integration test; both -token and -domain must be set")
+	}
+
+	createDomain(t, *domain)
+
+	p := &desec.Provider{
+		Token: *token,
+	}
+	suite := libdnstest.NewTestSuite(p, *domain+".")
+	suite.RunTests(t)
 }
