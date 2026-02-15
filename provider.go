@@ -303,7 +303,7 @@ func (p *Provider) ListZones(ctx context.Context) ([]libdns.Zone, error) {
 	zones := make([]libdns.Zone, len(desecZones))
 	for i, zone := range desecZones {
 		zones[i] = libdns.Zone{
-			Name: zone.Name,
+			Name: zone.Name + ".",
 		}
 	}
 	return zones, nil
