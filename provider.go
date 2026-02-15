@@ -368,12 +368,12 @@ func libdnsTTL(rrs rrSet) time.Duration {
 
 // rrSetTTL returns a valid rrSetTTL value for the given record.
 //
-// deSEC has a minimum TTL of 3600 seconds, if the record TTL
-// is shorter than 3600 seconds, 3600 seconds is returned.
+// deSEC has a minimum TTL of 60 seconds, if the record TTL
+// is shorter than 60 seconds, 60 seconds is returned.
 func rrSetTTL(rr libdns.RR) int {
 	ttl := int(rr.TTL / time.Second)
-	if ttl < 3600 {
-		return 3600
+	if ttl < 60 {
+		return 60
 	}
 	return ttl
 }
